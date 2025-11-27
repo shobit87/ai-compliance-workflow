@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+httpx
+pytest
+pymupdf
+python-docx
+textblob
+redis
+openai
+pytesseract
+fpdf2
