@@ -1,13 +1,19 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse
-import tempfile
 import os
+import tempfile
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
+
+from app.application.services.compliance_service import ComplianceApplicationService
+from app.infrastructure.container import get_compliance_service
 from app.models.schemas.compliance_schema import ComplianceRequest, ComplianceResponse
-from app.services.compliance_service import ComplianceService
 
 router = APIRouter()
-service = ComplianceService()
+
+
+def get_service() -> ComplianceApplicationService:
+    return get_compliance_service()
 
 def _map_exception(exc: Exception) -> HTTPException:
     if isinstance(exc, ValueError):
@@ -18,21 +24,23 @@ def _map_exception(exc: Exception) -> HTTPException:
 
 
 @router.post("/check", response_model=ComplianceResponse)
-async def check_document(payload: ComplianceRequest):
-    print("Received payload:", payload)
+async def check_document(
+    payload: ComplianceRequest,
+    service: Annotated[ComplianceApplicationService, Depends(get_service)],
+):
     try:
-        result = await service.run_compliance(payload.document_text or "", payload.rules or {})
+        report = await service.run_from_text(payload.document_text or "", payload.rules or {})
     except Exception as exc:
         raise _map_exception(exc) from exc
-    return JSONResponse(content=result)
+    return JSONResponse(content=report.to_dict())
 
 
 @router.post("/check-file")
 async def check_file(
+    service: Annotated[ComplianceApplicationService, Depends(get_service)],
     file: UploadFile = File(...),
-    # optional rules as form-data json string or simple comma list
-    forbidden_keywords: str = Form("")  # comma separated keywords
-):
+    forbidden_keywords: str = Form(""),
+) -> JSONResponse:
     """
     Multipart endpoint for uploading file. Returns full analysis.
     """
@@ -48,7 +56,7 @@ async def check_file(
     rules = {"forbidden_keywords": keywords}
 
     try:
-        result = await service.run_compliance_file(tmp_path, rules)
+        report = await service.run_from_file(tmp_path, rules)
     except Exception as exc:
         raise _map_exception(exc) from exc
 
@@ -58,4 +66,4 @@ async def check_file(
     except Exception:
         pass
 
-    return JSONResponse(content=result)
+    return JSONResponse(content=report.to_dict())

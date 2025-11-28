@@ -10,8 +10,9 @@ class ComplianceRequest(BaseModel):
 class ComplianceResponse(BaseModel):
     status: str
     summary: Optional[str] = None
-    llm_output: Optional[str] = None
     findings: List = []
     sentiment: Optional[Dict] = None
     score: Optional[int] = None
     recommendations: Optional[str] = None
+    tokens: Optional[Dict[str, int]] = None
+    risk_level: Optional[str] = None

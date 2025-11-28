@@ -2,8 +2,15 @@ import fitz
 from docx import Document
 from pathlib import Path
 
+from app.domain.ports.file_loader import FileLoaderPort
 
-async def load_file(file_path: str) -> str:
+
+class DocFileLoader(FileLoaderPort):
+    async def read(self, path: str) -> str:
+        return await _load_file(path)
+
+
+async def _load_file(file_path: str) -> str:
     path = Path(file_path)
 
     if not path.exists():
@@ -11,7 +18,6 @@ async def load_file(file_path: str) -> str:
 
     text = ""
 
-    # -------- PDF ---------
     if path.suffix.lower() == ".pdf":
         try:
             with fitz.open(path) as doc:
@@ -19,14 +25,13 @@ async def load_file(file_path: str) -> str:
                     page_text = page.get_text()
                     if page_text:
                         text += page_text
-        except Exception as e:
-            raise RuntimeError(f"PDF read failed: {e}")
+        except Exception as exc:
+            raise RuntimeError(f"PDF read failed: {exc}") from exc
 
-    # -------- DOCX --------
     elif path.suffix.lower() == ".docx":
         try:
             doc = Document(path)
-            text_parts = []
+            text_parts: list[str] = []
 
             for paragraph in doc.paragraphs:
                 if paragraph.text.strip():
@@ -40,13 +45,11 @@ async def load_file(file_path: str) -> str:
                             text_parts.append(cell_text)
 
             text = "\n".join(text_parts)
-        except Exception as e:
-            raise RuntimeError(f"DOCX read failed: {e}")
-
+        except Exception as exc:
+            raise RuntimeError(f"DOCX read failed: {exc}") from exc
     else:
         raise ValueError("Unsupported file type")
 
-    # FINAL GUARD
     if not text.strip():
         raise ValueError("File contains no readable text (possibly scanned or image-based document)")
 

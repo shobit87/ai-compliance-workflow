@@ -8,7 +8,7 @@ Modern compliance review stack that pairs a FastAPI backend with a Streamlit ana
 
 - **File-aware ingestion** &mdash; reads DOCX paragraphs and tables plus PDF text (via PyMuPDF). Rejects scanned/image-only files with a descriptive 400 response.
 - **Compliance pipeline** &mdash; rule matching, sentiment analysis, risk scoring, chunked summaries, and LLM-generated recommendations (with deterministic fallback when the API is unavailable).
-- **Caching hooks** &mdash; structure in place for Redis-backed LLM caching (`app/workflows/cache/`).
+- **Caching hooks** &mdash; structure in place for Redis-backed LLM caching (`app/infrastructure/cache/`).
 - **Streamlit dashboard** &mdash; professional-grade UI with hero header, metrics, tabs (Summary, Findings, Recommendations, LLM Metrics), token usage, and risk meter.
 - **API-first design** &mdash; FastAPI endpoints for JSON payloads (`/check`) and multipart file uploads (`/check-file`).
 - **Test coverage** &mdash; lightweight pytest suite for detectors, pipeline, cache, tokenizer, and API smoke tests.
@@ -19,15 +19,26 @@ Modern compliance review stack that pairs a FastAPI backend with a Streamlit ana
 
 ```
 app/
-├── api/v1/routers/compliance.py   # REST endpoints + error handling
-├── core/                          # Config & cache wiring
-├── models/                        # Pydantic schemas
-├── services/                      # Compliance service layer
-├── utils/                         # File loader, tokenizer, LLM client
-└── workflows/                     # Chunker, rule validator, scorers, pipeline
-streamlit_app/                     # Streamlit front-end
-tests/                             # Pytest suite
+├── api/v1/routers/compliance.py      # HTTP adapters only
+├── application/services/             # Use-case orchestration
+├── domain/
+│   ├── models/                       # Document & report entities
+│   ├── ports/                        # Interfaces (LLM, cache, file loader)
+│   └── services/                     # Rule engine, chunker, scoring, tokenizer
+├── infrastructure/
+│   ├── adapters/                     # OpenAI + file loader implementations
+│   ├── cache/                        # In-memory cache (extendable to Redis)
+│   └── container.py                  # Dependency wiring
+├── core/                             # Settings
+├── models/schemas/                   # FastAPI I/O schemas
+└── main.py                           # App factory
+streamlit_app/                        # Streamlit front-end
+tests/                                # Pytest suite
 ```
+
+### Architecture
+
+The project follows Clean Architecture: FastAPI routers act as interface adapters, application services orchestrate use cases, the domain layer holds business rules (pure Python, no framework imports), and infrastructure adapters implement domain ports (OpenAI, file IO, caching). `app/main.py` simply bootstraps dependencies via the container.
 
 ---
 

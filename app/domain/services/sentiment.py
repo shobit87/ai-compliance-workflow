@@ -1,7 +1,8 @@
 from textblob import TextBlob
 
-def get_sentiment(text: str) -> dict:
-    if not text or len(text.strip()) == 0:
+
+def get_sentiment(text: str) -> dict[str, float | str]:
+    if not text or not text.strip():
         return {"polarity": 0.0, "sentiment": "Neutral"}
 
     polarity = TextBlob(text).sentiment.polarity
