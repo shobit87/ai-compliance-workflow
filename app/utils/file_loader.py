@@ -26,7 +26,20 @@ async def load_file(file_path: str) -> str:
     elif path.suffix.lower() == ".docx":
         try:
             doc = Document(path)
-            text = "\n".join([p.text for p in doc.paragraphs])
+            text_parts = []
+
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_parts.append(paragraph.text)
+
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        cell_text = cell.text.strip()
+                        if cell_text:
+                            text_parts.append(cell_text)
+
+            text = "\n".join(text_parts)
         except Exception as e:
             raise RuntimeError(f"DOCX read failed: {e}")
 
@@ -34,7 +47,7 @@ async def load_file(file_path: str) -> str:
         raise ValueError("Unsupported file type")
 
     # FINAL GUARD
-    if len(text.strip()) < 20:
-        raise ValueError("File contains no readable text (possibly scanned PDF)")
+    if not text.strip():
+        raise ValueError("File contains no readable text (possibly scanned or image-based document)")
 
     return text.strip()

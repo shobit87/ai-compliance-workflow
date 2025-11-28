@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 import tempfile
 import os
@@ -9,10 +9,21 @@ from app.services.compliance_service import ComplianceService
 router = APIRouter()
 service = ComplianceService()
 
+def _map_exception(exc: Exception) -> HTTPException:
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, RuntimeError):
+        return HTTPException(status_code=422, detail=str(exc))
+    return HTTPException(status_code=500, detail="Unexpected compliance workflow error")
+
+
 @router.post("/check", response_model=ComplianceResponse)
 async def check_document(payload: ComplianceRequest):
     print("Received payload:", payload)
-    result = await service.run_compliance(payload.document_text or "", payload.rules or {})
+    try:
+        result = await service.run_compliance(payload.document_text or "", payload.rules or {})
+    except Exception as exc:
+        raise _map_exception(exc) from exc
     return JSONResponse(content=result)
 
 
@@ -36,7 +47,10 @@ async def check_file(
     keywords = [k.strip() for k in forbidden_keywords.split(",") if k.strip()]
     rules = {"forbidden_keywords": keywords}
 
-    result = await service.run_compliance_file(tmp_path, rules)
+    try:
+        result = await service.run_compliance_file(tmp_path, rules)
+    except Exception as exc:
+        raise _map_exception(exc) from exc
 
     # cleanup temp file
     try:

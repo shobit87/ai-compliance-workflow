@@ -1,294 +1,314 @@
 import json
-import re
-from io import BytesIO
 
-import requests
 import streamlit as st
-from fpdf import FPDF
+import requests
+import plotly.graph_objects as go
 
-API_URL = "http://localhost:8000/api/v1/compliance/check-file"
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(page_title="dY AI Compliance Checker", layout="wide")
 
-# -----------------------------
-# PAGE CONFIG + DARK THEME
-# -----------------------------
-st.set_page_config(
-    page_title="AI Compliance Engine",
-    page_icon="✅",
-    layout="wide",
-)
-
-# Custom dark-ish styling
+# ---------------- GLOBAL STYLES ----------------
 st.markdown(
     """
 <style>
-body {
-    background-color: #0f172a;
+:root {
+    --bg: #f4f6fb;
+    --text: #0f172a;
+    --card-bg: #ffffff;
+    --border: #e2e8f0;
+    --accent: #305adf;
+    --ok: #16a34a;
+    --warn: #f59e0b;
+    --bad: #dc2626;
 }
-[data-testid="stAppViewContainer"] {
-    background-color: #020617;
-    color: #e5e7eb;
+html, body, .stApp {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: "Inter", sans-serif;
 }
-[data-testid="stSidebar"] {
-    background-color: #020617;
+.stSidebar {
+    background: var(--card-bg);
 }
-.card {
-    background-color: #020617;
-    padding: 16px;
-    border-radius: 12px;
-    border: 1px solid #1f2937;
+.hero-card {
+    padding: 26px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: radial-gradient(circle at top, #14234b, #0b1324);
+    color: #f8fafc;
+    box-shadow: 0 25px 50px rgba(15, 23, 42, 0.55);
+    margin-bottom: 30px;
 }
-.metric {
-    font-size:20px; font-weight:bold;
+.hero-card h1 {
+    margin-bottom: 8px;
 }
-.badge-ok {
-    background:#022c22;
-    color:#6ee7b7;
-    padding:6px 12px;
-    border-radius:999px;
-    display:inline-block;
+.hero-card p {
+    font-size: 16px;
+    margin: 0;
+    opacity: 0.8;
 }
-.badge-warn {
-    background:#3f1d1d;
-    color:#fecaca;
-    padding:6px 12px;
-    border-radius:999px;
-    display:inline-block;
+.metric-card {
+    background: var(--card-bg);
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+    height: 100%;
 }
-.badge-neutral {
-    background:#111827;
-    color:#e5e7eb;
-    padding:6px 12px;
-    border-radius:999px;
-    display:inline-block;
-}
-.highlight-text {
-    background-color: #111827;
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid #1f2937;
-    white-space: pre-wrap;
-    font-family: "SF Mono","Consolas","Menlo",monospace;
+.metric-card h4 {
     font-size: 13px;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    text-transform: uppercase;
 }
-mark {
-    background-color: #f97316;
-    color: #020617;
+.metric-card .value {
+    font-size: 30px;
+    font-weight: 700;
+}
+.result-card {
+    background: var(--card-bg);
+    padding: 26px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    box-shadow: 0 30px 60px rgba(15, 23, 42, 0.12);
+    margin-bottom: 30px;
+}
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.result-header h3 {
+    margin: 0;
+}
+.muted {
+    color: #8693a6;
+    font-size: 14px;
+}
+.status-chip {
+    padding: 6px 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+}
+.status-chip.ok {color: var(--ok); background: #ecfdf3;}
+.status-chip.warn {color: var(--warn); background: #fff7eb;}
+.status-chip.bad {color: var(--bad); background: #fee2e2;}
+.recommendation-item {
+    border-left: 4px solid var(--accent);
+    background: #eef2ff;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+.summary-card {
+    background: linear-gradient(145deg, #ffffff 0%, #f5f7ff 100%);
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+    min-height: 140px;
 }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# -----------------------------
-# SIDEBAR
-# -----------------------------
-with st.sidebar:
-    st.title("⚙️ Options")
-    forbidden = st.text_input("Forbidden Keywords (comma separated)", help="e.g. secret, leak, NDA")
-    rules = {
-        "forbidden_keywords": [x.strip() for x in forbidden.split(",") if x.strip()]
-    }
-    st.caption("These keywords will be flagged as compliance findings.")
+# ---------------- HERO HEADER ----------------
+st.markdown(
+    """
+<div class="hero-card">
+    <h1>dY AI Compliance Checker</h1>
+    <p>Upload policy drafts or contracts to receive automated compliance scoring,
+    summarized findings, and prioritized recommendations in a single executive view.</p>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
-# -----------------------------
-# HEADER
-# -----------------------------
-st.title("📄 AI Compliance Checker")
+# ---------------- SIDEBAR CONFIG ----------------
+st.sidebar.title("Configuration")
+st.sidebar.write(
+    "Tune the automated checks before running an analysis. Settings are applied to all uploads."
+)
+rules_input = st.sidebar.text_input("Forbidden Keywords (comma separated)")
+sector = st.sidebar.selectbox(
+    "Business Sector", ["General", "Finance", "Healthcare", "IT", "Legal"]
+)
+forbidden_keywords = [x.strip() for x in rules_input.split(",") if x.strip()]
 
-left_col, right_col = st.columns([1.1, 1])
+# ---------------- LAYOUT ----------------
+left, right = st.columns([1.05, 2.25])
 
-# -----------------------------
-# FILE INPUT (MULTI-FILE)
-# -----------------------------
-with left_col:
-    st.subheader("Document Input")
+with left:
+    st.subheader("Upload Documents")
+    st.caption("Securely upload PDF or DOCX files for review.")
     uploaded_files = st.file_uploader(
-        "Upload one or more PDF / DOCX files",
-        type=["pdf", "docx"],
-        accept_multiple_files=True,
+        "Upload files", type=["pdf", "docx"], accept_multiple_files=True
     )
-    run = st.button("Run Compliance Check")
+    run = st.button(
+        "Run Compliance Check",
+        use_container_width=True,
+        disabled=not uploaded_files,
+    )
+    if not uploaded_files:
+        st.info("Select one or more files to enable the workflow.")
 
-# -----------------------------
-# UTILITIES
-# -----------------------------
-def call_backend(file, rules: dict):
-    files = {"file": (file.name, file, file.type)}
-    payload = {"rules": json.dumps(rules)}
-
-    res = requests.post(API_URL, data=payload, files=files)
-    if res.status_code != 200:
-        raise RuntimeError(f"Backend error: {res.status_code} {res.text}")
-    return res.json()
+reports = []
+session = requests.Session()
 
 
-def build_pdf_report(filename: str, data: dict) -> bytes:
-    buffer = BytesIO()
+@st.cache_data(show_spinner=False, ttl=600)
+def analyze_document(file_bytes: bytes, filename: str, keywords: tuple[str, ...], sector: str):
+    keyword_payload = ",".join(keywords)
+    response = session.post(
+        "http://127.0.0.1:8000/api/v1/compliance/check-file",
+        files={"file": (filename, file_bytes)},
+        data={"forbidden_keywords": keyword_payload, "sector": sector},
+    )
+    return response.status_code, response.text
 
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "AI Compliance Report", ln=True, align="C")
-
-    pdf.ln(5)
-    pdf.set_font("Arial", "", 11)
-    pdf.cell(0, 8, f"File Name: {filename}", ln=True)
-    pdf.cell(0, 8, f"Score: {data.get('score', 0)}/100", ln=True)
-
-    pdf.ln(4)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Summary", ln=True)
-    pdf.set_font("Arial", "", 11)
-    pdf.multi_cell(0, 6, data.get("summary", "No summary generated"))
-
-    pdf.ln(3)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Sentiment", ln=True)
-    pdf.set_font("Arial", "", 11)
-    s = data.get("sentiment", {})
-    pdf.multi_cell(0, 6, f"{s.get('sentiment')} (polarity={round(s.get('polarity', 0),2)})")
-
-    pdf.ln(3)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Findings", ln=True)
-    pdf.set_font("Arial", "", 11)
-
-    findings = data.get("findings", [])
-    if not findings:
-        pdf.multi_cell(0, 6, "No compliance issues detected.")
-    else:
-        for f in findings:
-            pdf.multi_cell(0, 6, f"- {f.get('keyword')}: {f.get('message')}")
-
-    pdf.ln(3)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Recommendations", ln=True)
-    pdf.set_font("Arial", "", 11)
-    pdf.multi_cell(0, 6, data.get("recommendations", "No recommendations"))
-    
-    # ✅ ONLY SAFE WAY
-    raw = pdf.output(dest="S")
-    pdf_bytes = bytes(raw) if isinstance(raw, (bytearray, bytes)) else raw.encode("latin-1")
-    return pdf_bytes
-
-
-
-def highlight_text(text: str, findings: list) -> str:
-    """Highlight risky keywords in the original document text."""
-    if not text:
-        return "No text available from backend."
-
-    keywords = {f.get("keyword", "").strip() for f in findings if f.get("keyword")}
-    highlighted = text
-
-    for kw in sorted(keywords, key=len, reverse=True):
-        if not kw:
-            continue
-        pattern = re.compile(re.escape(kw), re.IGNORECASE)
-        highlighted = pattern.sub(r"<mark>\g<0></mark>", highlighted)
-
-    return highlighted
-
-
-# -----------------------------
-# MAIN RESULTS PANEL
-# -----------------------------
-with right_col:
-    st.subheader("Compliance Result")
-    results_area = st.container()
-
-if run and uploaded_files:
-    with results_area:
-        for file in uploaded_files:
-            st.markdown(f"## 📁 {file.name}")
+# ---------------- PROCESS FILES ----------------
+if uploaded_files and run:
+    keywords_tuple = tuple(forbidden_keywords)
+    for file in uploaded_files:
+        with st.spinner(f"Analyzing {file.name}..."):
             try:
-                data = call_backend(file, rules)
-            except Exception as e:
-                st.error(f"Error processing {file.name}: {e}")
-                continue
+                file_bytes = file.getvalue()
+                status, payload = analyze_document(file_bytes, file.name, keywords_tuple, sector)
+                if status == 200:
+                    reports.append((file.name, json.loads(payload)))
+                else:
+                    st.error(f"{file.name}: API error ({status}) - {payload}")
+            except Exception as exc:
+                st.error(f"{file.name}: Connection failed - {exc}")
 
-            # STATUS + SCORE
-            status_ok = data.get("status") == "ok"
-            score = data.get("score", 0)
+# ---------------- RESULTS ----------------
+with right:
+    st.subheader("Analysis Workspace")
+    st.caption("Insights refresh automatically for every uploaded document.")
 
-            badge_class = "badge-ok" if status_ok else "badge-warn"
-            status_label = "PASSED" if status_ok else "FAILED"
+    if run and not reports:
+        st.warning(
+            "No reports were generated. Confirm that the backend service is running and reachable."
+        )
 
+    for idx, (name, data) in enumerate(reports):
+        score = data.get("score", 0)
+        status = "Compliant" if score >= 80 else "Review" if score >= 50 else "High Risk"
+        sentiment = data.get("sentiment", {}).get("sentiment", "N/A")
+        findings = data.get("findings", [])
+        tokens = data.get("tokens", {})
+        risk = data.get("risk_level", "LOW")
+        badge = "ok" if score >= 80 else "warn" if score >= 50 else "bad"
+
+        with st.container():
             st.markdown(
-                f'<span class="{badge_class}">Status: {status_label} · Score: {score}/100</span>',
+                f"""
+                <div class="result-card">
+                    <div class="result-header">
+                        <div>
+                            <h3>{name}</h3>
+                            <p class="muted">Sector: {sector}</p>
+                        </div>
+                        <span class="status-chip {badge}">{status}</span>
+                    </div>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
-            st.progress(score / 100)
 
-            # LAYOUT for each file
-            c1, c2 = st.columns([1.3, 1])
+            metric_cols = st.columns(4, gap="medium")
+            metric_cols[0].markdown(
+                f"<div class='metric-card'><h4>Score</h4><div class='value'>{score}%</div></div>",
+                unsafe_allow_html=True,
+            )
+            metric_cols[1].markdown(
+                f"<div class='metric-card'><h4>Sentiment</h4><div class='value'>{sentiment}</div></div>",
+                unsafe_allow_html=True,
+            )
+            metric_cols[2].markdown(
+                f"<div class='metric-card'><h4>Risk Level</h4><div class='value'>{risk}</div></div>",
+                unsafe_allow_html=True,
+            )
+            metric_cols[3].markdown(
+                f"<div class='metric-card'><h4>Findings</h4><div class='value'>{len(findings)}</div></div>",
+                unsafe_allow_html=True,
+            )
 
-            # -------- LEFT: SUMMARY + RECS --------
-            with c1:
-                st.markdown("#### 📌 Summary")
-                st.markdown('<div class="card">', unsafe_allow_html=True)
-                for line in data.get("summary", "").split("\n"):
-                    if line.strip():
-                        st.markdown(f"- {line.strip('- ')}")
-                st.markdown("</div>", unsafe_allow_html=True)
+            summary_tab, findings_tab, recs_tab, metrics_tab = st.tabs(
+                ["Executive Summary", "Findings", "Recommendations", "LLM Metrics"]
+            )
 
-                st.markdown("#### ✅ Recommendations")
-                st.markdown('<div class="card">', unsafe_allow_html=True)
-                for line in data.get("recommendations", "").split("\n"):
-                    if line.strip():
-                        st.markdown(f"• {line.strip('- ')}")
-                st.markdown("</div>", unsafe_allow_html=True)
-
-            # -------- RIGHT: SENTIMENT + FINDINGS + HIGHLIGHT --------
-            with c2:
-                st.markdown("#### 😊 Sentiment")
-                sent = data.get("sentiment", {"polarity": 0, "sentiment": "Neutral"})
-                polarity = sent.get("polarity", 0)
-                sentiment_label = sent.get("sentiment", "Neutral")
-
-                if polarity < -0.3:
-                    s_class = "badge-warn"
-                elif polarity > 0.3:
-                    s_class = "badge-ok"
-                else:
-                    s_class = "badge-neutral"
-
+            with summary_tab:
                 st.markdown(
-                    f'<span class="{s_class}">{sentiment_label} (polarity={round(polarity,2)})</span>',
+                    f"<div class='summary-card'>{data.get('summary', 'Summary unavailable.')}</div>",
                     unsafe_allow_html=True,
                 )
 
-                st.markdown("#### 🚨 Findings")
-                findings = data.get("findings", [])
+            with findings_tab:
                 if findings:
-                    for f in findings:
-                        kw = f.get("keyword", "")
-                        msg = f.get("message", "")
-                        st.warning(f"{kw}: {msg}")
+                    st.dataframe(findings, use_container_width=True)
                 else:
-                    st.success("No forbidden keywords or rule violations found.")
+                    st.success("No policy violations detected in this document.")
 
-                st.markdown("#### 🔍 Highlighted Risky Text")
-                original_text = data.get("text", "")
-                highlighted = highlight_text(original_text, findings)
-                st.markdown(
-                    f'<div class="highlight-text">{highlighted}</div>',
-                    unsafe_allow_html=True,
-                )
+            with recs_tab:
+                recommendations = [
+                    entry.strip()
+                    for entry in data.get("recommendations", "").split("\n")
+                    if entry.strip()
+                ]
+                if recommendations:
+                    for rec in recommendations:
+                        st.markdown(
+                            f"<div class='recommendation-item'>{rec}</div>",
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    st.info("No automated recommendations generated.")
 
-            # -------- PDF DOWNLOAD --------
-            pdf_bytes = build_pdf_report(file.name, data)
-            st.download_button(
-                label="📥 Download PDF Report",
-                data=pdf_bytes,
-                file_name="compliance_report.pdf",
-                mime="application/pdf"
-                )
-
-
-            # -------- RAW JSON (optional) --------
-            with st.expander("🔧 Raw JSON (debug)"):
-                st.json(data)
-
-            st.markdown("---")
+            with metrics_tab:
+                token_cols = st.columns(2, gap="large")
+                with token_cols[0]:
+                    if tokens:
+                        fig = go.Figure(
+                            go.Bar(
+                                x=["Input", "Output"],
+                                y=[tokens.get("input", 0), tokens.get("output", 0)],
+                                marker_color=["#3b82f6", "#22c55e"],
+                            )
+                        )
+                        fig.update_layout(
+                            height=320,
+                            template="plotly_white",
+                            margin=dict(l=10, r=10, t=40, b=10),
+                            title="LLM Token Usage",
+                        )
+                        st.plotly_chart(
+                            fig,
+                            width="stretch",
+                            key=f"plotly_tokens_{idx}_{name}",
+                        )
+                    else:
+                        st.info("Token usage data not available.")
+                with token_cols[1]:
+                    st.write("Risk Meter")
+                    gauge_value = 90 if risk == "LOW" else 60 if risk == "MEDIUM" else 30
+                    g = go.Figure(
+                        go.Indicator(
+                            mode="gauge+number",
+                            value=gauge_value,
+                            gauge={"axis": {"range": [0, 100]}},
+                        )
+                    )
+                    g.update_layout(
+                        height=320,
+                        margin=dict(l=10, r=10, t=40, b=10),
+                    )
+                    st.plotly_chart(
+                        g,
+                        width="content",
+                        key=f"plotly_risk_{idx}_{name}",
+                    )

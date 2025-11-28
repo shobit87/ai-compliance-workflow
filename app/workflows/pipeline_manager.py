@@ -6,55 +6,46 @@ from app.workflows.cache.llm_cache import get_cached, set_cached
 from app.utils.llm_client import get_llm_client
 from app.utils.file_loader import load_file
 
-async def run_compliance_pipeline(text_or_path: str, rules: dict, from_file: bool = False) -> dict:
-    """
-    Main pipeline for compliance workflow.
-    Supports both raw text and uploaded files.
-    """
+async def run_compliance_pipeline(text_or_path: str, rules: dict, from_file: bool = False):
 
-    # 1️⃣ Load text
+    # Load text
     if from_file:
         text = await load_file(text_or_path)
-        print("TEXT EXTRACTED (first 500 chars):", text[:500]) # ✅ FIXED
     else:
-        text = text_or_path or ""
+        text = text_or_path
 
-    # 2️⃣ Forbidden keyword rule checks
+    # Rule engine
     rule_result = run_rule_checks(text, rules)
     findings = rule_result.get("findings", [])
 
-    # 3️⃣ Sentiment analysis
+    # Sentiment
     sentiment = get_sentiment(text)
 
-    # 4️⃣ Compute score
+    # Score
     score = compute_compliance_score(findings, sentiment)
 
-    # 5️⃣ Summary (LLM + cache)
+    # Prompt
     chunks = chunk_text(text)
-    base_prompt = "Summarize this document in 3 bullet points:\n\n"
-    content = chunks[0].strip() if chunks and len(chunks[0].strip()) > 50 else text[:2000]
-    prompt_text = base_prompt + content
-    
-    cached = await get_cached(prompt_text)
+    summary_source = ""
+    if chunks:
+        summary_source = chunks[0].strip()
+    if not summary_source:
+        summary_source = text[:2000].strip()
+    if not summary_source:
+        summary_source = text[:2000]
+    prompt = "Summarize:\n" + summary_source
 
-    if cached and "summary" in cached:
+    cached = await get_cached(prompt)
+    if cached:
         summary = cached["summary"]
     else:
         llm = await get_llm_client()
-        try:
-            summary = await llm.generate(prompt_text)
-            if not summary or "provide the document" in summary.lower():
-                raise ValueError("LLM gave empty summary")
-        except Exception as e:
-            summary = text[:600] + "..."
-        await set_cached(prompt_text, {"summary": summary})
+        summary = await llm.generate(prompt)
+        await set_cached(prompt, {"summary": summary})
 
-    # 6️⃣ Recommendations
+    # Recommendations
     llm = await get_llm_client()
-
     rec_prompt = f"""
-You are a compliance expert.
-
 Summary:
 {summary}
 
@@ -64,15 +55,17 @@ Findings:
 Sentiment:
 {sentiment}
 
-Provide 3 short compliance recommendations.
+Provide 3 compliance recommendations.
 """
+    recommendations = await llm.generate(rec_prompt)
 
-    try:
-        recommendations = await llm.generate(rec_prompt)
-    except:
-        recommendations = "LLM unavailable. Recommendations not generated."
-        
-    # 7️⃣ Return final structured result
+    # Token estimation
+    input_tokens = len(prompt.split())
+    output_tokens = len(summary.split())
+
+    # Risk logic
+    risk = "LOW" if score >= 80 else "MEDIUM" if score >= 50 else "HIGH"
+
     return {
         "status": "ok",
         "summary": summary,
@@ -80,5 +73,10 @@ Provide 3 short compliance recommendations.
         "findings": findings,
         "score": score,
         "recommendations": recommendations,
-        "text":text,
+        "tokens": {
+            "input": input_tokens,
+            "output": output_tokens,
+            "total": input_tokens + output_tokens
+        },
+        "risk_level": risk
     }
