@@ -1,4 +1,6 @@
-# dY AI Compliance Workflow
+# AI Compliance Workflow
+
+![Python](https://img.shields.io/badge/python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688) ![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B) ![Tests](https://img.shields.io/badge/tests-pytest-green)
 
 Modern compliance review stack that pairs a FastAPI backend with a Streamlit analyst dashboard. Upload DOCX/PDF policies, apply keyword-based rules, and receive automated scoring, sentiment, summaries, and action-ready recommendations. A lightweight LLM fallback keeps the workflow usable even when no OpenAI key is configured.
 
